@@ -24,13 +24,23 @@ public class UnchangedToastedReplicationMessageColumn extends AbstractReplicatio
      * Marker value indicating an unchanged TOAST column value.
      */
     public static final Object UNCHANGED_TOAST_VALUE = new Object();
+    public static final Object UNCHANGED_INT_ARRAY_TOAST_VALUE = new Object();
+    public static final Object UNCHANGED_BIGINT_ARRAY_TOAST_VALUE = new Object();
 
-    private boolean isArrayColumn = false;
+    private boolean isStringArrayColumn = false;
+    private boolean isIntArrayColumn = false;
+    private boolean isBigintArrayColumn = false;
 
     public UnchangedToastedReplicationMessageColumn(String columnName, PostgresType type, String typeWithModifiers, boolean optional) {
         super(columnName, type, typeWithModifiers, optional);
         if (typeWithModifiers.equals("text[]") || typeWithModifiers.equals("_text")) {
-            isArrayColumn = true;
+            isStringArrayColumn = true;
+        }
+        else if (typeWithModifiers.equals("integer[]") || typeWithModifiers.equals("_int4")) {
+            isIntArrayColumn = true;
+        }
+        else if (typeWithModifiers.equals("bigint[]") || typeWithModifiers.equals("_int8")) {
+            isBigintArrayColumn = true;
         }
     }
 
@@ -41,8 +51,14 @@ public class UnchangedToastedReplicationMessageColumn extends AbstractReplicatio
 
     @Override
     public Object getValue(PostgresStreamingChangeEventSource.PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
-        if (isArrayColumn) {
+        if (isStringArrayColumn) {
             return Arrays.asList(UNCHANGED_TOAST_VALUE);
+        }
+        if (isIntArrayColumn) {
+            return UNCHANGED_INT_ARRAY_TOAST_VALUE;
+        }
+        if (isBigintArrayColumn) {
+            return UNCHANGED_BIGINT_ARRAY_TOAST_VALUE;
         }
         return UNCHANGED_TOAST_VALUE;
     }

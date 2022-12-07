@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Field;
@@ -157,7 +158,7 @@ public class PostgresValueConverter extends JdbcValueConverters {
 
     private final String toastPlaceholderString;
     private final byte[] toastPlaceholderBinary;
-
+    private final String toastPlaceholderNumberArrayString;
     private final int moneyFractionDigits;
 
     public static PostgresValueConverter of(PostgresConnectorConfig connectorConfig, Charset databaseCharset, TypeRegistry typeRegistry) {
@@ -173,6 +174,7 @@ public class PostgresValueConverter extends JdbcValueConverters {
                 connectorConfig.binaryHandlingMode(),
                 connectorConfig.intervalHandlingMode(),
                 connectorConfig.getUnavailableValuePlaceholder(),
+                connectorConfig.getUnavailableNumberArrayPlaceholder(),
                 connectorConfig.moneyFractionDigits());
     }
 
@@ -180,7 +182,7 @@ public class PostgresValueConverter extends JdbcValueConverters {
                                      TemporalPrecisionMode temporalPrecisionMode, ZoneOffset defaultOffset,
                                      BigIntUnsignedMode bigIntUnsignedMode, boolean includeUnknownDatatypes, TypeRegistry typeRegistry,
                                      HStoreHandlingMode hStoreMode, BinaryHandlingMode binaryMode, IntervalHandlingMode intervalMode,
-                                     byte[] toastPlaceholder, int moneyFractionDigits) {
+                                     byte[] toastPlaceholder, String toastPlaceholderNumberArrayString, int moneyFractionDigits) {
         super(decimalMode, temporalPrecisionMode, defaultOffset, null, bigIntUnsignedMode, binaryMode);
         this.databaseCharset = databaseCharset;
         this.jsonFactory = new JsonFactory();
@@ -191,6 +193,7 @@ public class PostgresValueConverter extends JdbcValueConverters {
         this.toastPlaceholderBinary = toastPlaceholder;
         this.toastPlaceholderString = new String(toastPlaceholder);
         this.moneyFractionDigits = moneyFractionDigits;
+        this.toastPlaceholderNumberArrayString = toastPlaceholderNumberArrayString;
     }
 
     @Override
@@ -1136,6 +1139,18 @@ public class PostgresValueConverter extends JdbcValueConverters {
         if ((data instanceof List) && (((List) data).size() > 0) &&
                 (((List) data).get(0) == UnchangedToastedReplicationMessageColumn.UNCHANGED_TOAST_VALUE)) {
             return Arrays.asList(toastPlaceholderString);
+        }
+        if (data == UnchangedToastedReplicationMessageColumn.UNCHANGED_INT_ARRAY_TOAST_VALUE) {
+            return Stream.of(toastPlaceholderNumberArrayString.split(","))
+                    .map(String::trim)
+                    .map(Integer::parseInt)
+                    .collect(Collectors.toList());
+        }
+        if (data == UnchangedToastedReplicationMessageColumn.UNCHANGED_BIGINT_ARRAY_TOAST_VALUE) {
+            return Stream.of(toastPlaceholderNumberArrayString.split(","))
+                    .map(String::trim)
+                    .map(Long::parseLong)
+                    .collect(Collectors.toList());
         }
         return super.handleUnknownData(column, fieldDefn, data);
     }
