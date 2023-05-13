@@ -351,11 +351,37 @@ public class PostgresReplicationConnection extends JdbcConnection implements Rep
         }
     }
 
-    protected void validateSlotIsInExpectedState(WalPositionLocator walPosition) throws SQLException {
+    protected void validateSlotIsInExpectedState(WalPositionLocator walPosition) throws SQLException, InterruptedException {
         Lsn lsn = walPosition.getLastCommitStoredLsn() != null ? walPosition.getLastCommitStoredLsn() : walPosition.getLastEventStoredLsn();
         if (lsn == null || !connectorConfig.isFlushLsnOnSource()) {
             return;
         }
+
+        final int maxRetries = connectorConfig.maxRetries();
+        final Duration delay = connectorConfig.retryDelay();
+        int tryCount = 0;
+        while (true) {
+            try {
+                triggerReplicationSlotAdvance(lsn);
+            }
+            catch (Exception e) {
+                String message = "Failed to trigger replication slot advance at " + lsn;
+                if (++tryCount > maxRetries) {
+                    if (e.getMessage().matches(".*replication slot .* is active.*")) {
+                        message += "; when setting up multiple connectors for the same database host, please make sure to use a distinct replication slot name for each.";
+                    }
+                    throw new DebeziumException(message, e);
+                }
+                else {
+                    LOGGER.warn(message + ", waiting for {} ms and retrying, attempt number {} over {}", delay, tryCount, maxRetries);
+                    final Metronome metronome = Metronome.sleeper(delay, Clock.SYSTEM);
+                    metronome.pause();
+                }
+            }
+        }
+    }
+
+    protected void triggerReplicationSlotAdvance(Lsn lsn) throws SQLException {
         try (Statement stmt = pgConnection().createStatement()) {
             String seekCommand = String.format(
                     "SELECT pg_replication_slot_advance('%s', '%s')",
